@@ -11,7 +11,15 @@ module Celluloid
           @url = url
           uri = URI.parse(url)
           port = uri.port || (uri.scheme == "ws" ? 80 : 443)
-          @socket = Celluloid::IO::TCPSocket.new(uri.host, port)
+
+          begin
+            @socket = Celluloid::IO::TCPSocket.new(uri.host, port)
+          rescue => e
+
+            handler.async.on_error(::WebSocket::Driver::Hybi::ERRORS[:protocol_error], e.to_s)
+            terminate
+          end
+
           @client = ::WebSocket::Driver.client(self)
           @handler = handler
 
@@ -28,6 +36,10 @@ module Celluloid
           end
           @client.on('close') do |event|
             @handler.async.on_close(event.code, event.reason) if @handler.respond_to?(:on_close)
+          end
+
+          @client.on('error') do |event|
+            @handler.async.on_error(event.code, event.reason) if @handler.respond_to?(:on_error)
           end
 
           @client.start
